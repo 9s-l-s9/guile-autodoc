@@ -96,6 +96,9 @@ docstrings, and source locations; MODULES themselves must already be
 loadable (e.g. via GUILE_LOAD_PATH), since their live bindings are what
 determines which names actually get documented.
 
+TITLE, if given, is emitted as a leading \"# TITLE\" line; pass #f to omit
+it (e.g. when the caller writes its own document header around this).
+
 REPO-BLOB-PREFIX, if given, is prepended to each binding's file path to
 form its \"Source\" column link (e.g.
 \"https://github.com/org/repo/blob/main/\"); omit it to leave that column
@@ -129,7 +132,7 @@ stability tier, a changelog version, an owning team."
      "| " (string-join header-cells " | ") " |\n"
      "|" (string-join (map (lambda (_) "---") header-cells) "|") "|\n"))
   (string-append
-   "# " title "\n\n"
+   (if title (string-append "# " title "\n\n") "")
    (apply string-append
     (map (lambda (module-name)
            (string-append

@@ -28,7 +28,8 @@
             source-info-documentation
             source-info-file
             source-info-line
-            lookup-source-info))
+            lookup-source-info
+            register-documentation!))
 
 (read-enable 'positions)
 
@@ -133,13 +134,12 @@
 return a <scan> of every top-level define/define*/define-record-type
 binding's signature, leading docstring, and source file/line.
 
-ON-FORM, if given, is called as (ON-FORM MODULE-NAME FORM PATH LINE) for
-every top-level form read, before the built-in recognizers run -- for
+ON-FORM, if given, is called as (ON-FORM SCAN MODULE-NAME FORM PATH LINE)
+for every top-level form read, before the built-in recognizers run -- for
 project-specific conventions the scanner has no opinion about, such as an
 adjacent metadata alist next to bindings that can't carry a docstring
-themselves (macros, SRFI-9 accessors, exported constants). It should
-signal its own metadata some other way -- see the README's escape-hatch
-example."
+themselves (macros, SRFI-9 accessors, exported constants). Use
+`register-documentation!' on the given SCAN to feed findings back in."
   (let ((scan (make-scan (make-hash-table) (make-hash-table) (make-hash-table))))
     (for-each
      (lambda (path)
@@ -153,11 +153,23 @@ example."
                             (cadr form)
                             module-name))
                        (line (assq-ref (source-properties form) 'line)))
-                   (when on-form (on-form next-module form path line))
+                   (when on-form (on-form scan next-module form path line))
                    (record-definition! scan next-module form path line)
                    (loop next-module))))))))
      files)
     scan))
+
+(define (register-documentation! scan module-name name text)
+  "Manually record documentation TEXT for NAME (optionally scoped to
+MODULE-NAME), for a source convention this scanner has no built-in opinion
+about -- e.g. an adjacent metadata alist next to bindings that can't carry
+a real docstring (macros, SRFI-9 accessors, exported constants). Call this
+from the ON-FORM callback given to `scan-source-files', which runs before
+this scanner's own recognizers for the same form; like the rest of this
+module's tables, first-recorded wins, so this only fills a gap left by a
+definition this scanner has no built-in way to read a docstring from -- it
+will not override one for a name this scanner also recognizes."
+  (table-set! (scan-documentation scan) module-name name text))
 
 (define (lookup-source-info scan module-name name)
   "The <source-info> SCAN recorded for NAME in MODULE-NAME, falling back to
