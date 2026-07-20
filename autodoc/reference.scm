@@ -18,7 +18,16 @@
   #:use-module (autodoc scan)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-13)
-  #:export (generate-api-reference))
+  #:export (generate-api-reference
+            ;; Shared with (autodoc browser), which renders the same
+            ;; per-binding facts as an interactive page instead of a table;
+            ;; re-exported so both stay in exact agreement rather than
+            ;; keeping two independent notions of "this binding's kind" etc.
+            module-bindings
+            binding-kind
+            binding-signature
+            binding-documentation
+            binding-source-link))
 
 (define (one-line text)
   (string-join (string-tokenize text) " "))

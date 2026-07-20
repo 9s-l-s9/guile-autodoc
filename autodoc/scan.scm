@@ -19,8 +19,10 @@
 
 (define-module (autodoc scan)
   #:use-module (ice-9 ftw)
+  #:use-module (ice-9 rdelim)
   #:use-module (srfi srfi-1)
   #:use-module (srfi srfi-9)
+  #:use-module (srfi srfi-13)
   #:export (scan-tree
             scan-source-files
             source-info?
@@ -28,18 +30,39 @@
             source-info-documentation
             source-info-file
             source-info-line
+            source-info-end-line
+            source-text
             lookup-source-info
             register-documentation!))
 
 (read-enable 'positions)
 
 (define-record-type <source-info>
-  (make-source-info signature documentation file line)
+  (make-source-info signature documentation file line end-line)
   source-info?
   (signature source-info-signature)
   (documentation source-info-documentation)
   (file source-info-file)
-  (line source-info-line))
+  (line source-info-line)
+  ;; The last line of the defining form (a `read' immediately after the one
+  ;; that produced it lands one line-boundary past its closing paren). Same
+  ;; 1-indexing as LINE. #f wherever LINE is #f.
+  (end-line source-info-end-line))
+
+(define (source-text info)
+  "The literal source text FILE[LINE..END-LINE] INFO points at, or #f if
+INFO has no location. One extra file read per call -- fine for a one-shot
+doc generator, not meant for a hot path."
+  (and (source-info-file info) (source-info-line info) (source-info-end-line info)
+       (call-with-input-file (source-info-file info)
+         (lambda (port)
+           (let loop ((n 1) (lines '()))
+             (let ((line (read-line port)))
+               (cond
+                ((or (eof-object? line) (> n (source-info-end-line info)))
+                 (string-join (reverse lines) "\n"))
+                ((>= n (source-info-line info)) (loop (+ n 1) (cons line lines)))
+                (else (loop (+ n 1) lines)))))))))
 
 ;; A <scan> bundles three hash tables keyed both by bare NAME (first
 ;; definition of that name anywhere in the tree wins, so unqualified
@@ -87,13 +110,13 @@
   (when (and (pair? body) (string? (car body)))
     (table-set! documentation module-name name (car body))))
 
-(define (record-location! locations module-name name path line)
+(define (record-location! locations module-name name path line end-line)
   (when line
     ;; +1: `read-enable 'positions' reports 0-indexed lines; editors, GitHub
     ;; blob URLs (#L123), and everyone reading a stack trace count from 1.
-    (table-set! locations module-name name (cons path (+ line 1)))))
+    (table-set! locations module-name name (list path (+ line 1) (+ end-line 1)))))
 
-(define (record-definition! scan module-name form path line)
+(define (record-definition! scan module-name form path line end-line)
   (when (pair? form)
     (let ((signatures (scan-signatures scan))
           (documentation (scan-documentation scan))
@@ -101,7 +124,7 @@
       (define (record! name arguments body)
         (record-signature! signatures module-name name arguments)
         (record-documentation! documentation module-name name body)
-        (record-location! locations module-name name path line))
+        (record-location! locations module-name name path line end-line))
       (cond
        ((and (memq (car form) '(define define*))
              (> (length form) 2))
@@ -152,9 +175,12 @@ themselves (macros, SRFI-9 accessors, exported constants). Use
                         (if (and (pair? form) (eq? (car form) 'define-module))
                             (cadr form)
                             module-name))
-                       (line (assq-ref (source-properties form) 'line)))
+                       (line (assq-ref (source-properties form) 'line))
+                       ;; The port is now positioned just past FORM's closing
+                       ;; paren, so its current line is FORM's last line.
+                       (end-line (port-line port)))
                    (when on-form (on-form scan next-module form path line))
-                   (record-definition! scan next-module form path line)
+                   (record-definition! scan next-module form path line end-line)
                    (loop next-module))))))))
      files)
     scan))
@@ -177,10 +203,10 @@ any module's definition of that bare name if MODULE-NAME has none (the
 case when a binding is re-exported from elsewhere). All three fields are
 independently optional -- e.g. a docstring-free define with no accompanying
 metadata still yields a usable file/line with #f signature/documentation."
-  (make-source-info
-   (table-ref (scan-signatures scan) module-name name)
-   (table-ref (scan-documentation scan) module-name name)
-   (let ((location (table-ref (scan-locations scan) module-name name)))
-     (and location (car location)))
-   (let ((location (table-ref (scan-locations scan) module-name name)))
-     (and location (cdr location)))))
+  (let ((location (table-ref (scan-locations scan) module-name name)))
+    (make-source-info
+     (table-ref (scan-signatures scan) module-name name)
+     (table-ref (scan-documentation scan) module-name name)
+     (and location (car location))
+     (and location (cadr location))
+     (and location (caddr location)))))

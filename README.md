@@ -31,6 +31,16 @@ out because the problem (and the fix) isn't specific to that project.
   what reflection alone can't — `define*` keyword-argument names and
   source locations.
 
+- **`(autodoc browser)`** renders the same scan as a self-contained,
+  interactive HTML page instead of a Markdown table: navigation on the
+  left, documentation in the middle, and a sticky source panel on the
+  right that fills in with the binding's *actual source text* on click —
+  not just a link to it. No server, no build step: every binding's exact
+  source range (via `(autodoc scan)`'s start/end line tracking) is scanned
+  and embedded at generation time, so viewing it is a same-page DOM swap.
+  Shares its notion of a binding's kind/signature/description with
+  `(autodoc reference)` so the two views can't disagree.
+
 - **`(autodoc site)`** renders a directory of plain Markdown docs
   (including the generated reference) into a static site with
   [Haunt](https://dthompson.us/projects/haunt.html), working around two
@@ -64,6 +74,10 @@ guix shell -m manifest.scm -- haunt build   # from doc/
 
 See `tests/smoke-test.scm` for a runnable example that generates a
 reference against an arbitrary project's already-loadable modules.
+`(autodoc browser)`'s `generate-api-browser` takes the same keywords as
+`generate-api-reference` and returns a full HTML document string instead
+of Markdown — write it straight to a file (e.g.
+`doc/generated/api-browser.html`).
 
 ## Status
 
