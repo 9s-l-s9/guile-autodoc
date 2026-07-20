@@ -225,12 +225,15 @@ table, or #f otherwise."
 
 ;;; Page builder
 
-(define* (docs-pages directory #:key template (prefix "/") (strip-comments? #t))
+(define* (docs-pages directory #:key template (prefix "/") (strip-comments? #t)
+                     (external-prefix #f))
   "A Haunt builder rendering every \".md\" file under DIRECTORY to an
 \".html\" page at the mirrored path under PREFIX, title from its first
 heading (`page-title'), tables reassembled (`render-tables'), and internal
-links rewritten (`rewrite-md-links', called with no EXTERNAL-PREFIX --
-compose your own directory walk if you need one).
+links rewritten (`rewrite-md-links'). EXTERNAL-PREFIX is passed through to
+`rewrite-md-links' for links that escape DIRECTORY (e.g. \"../SECURITY.md\"
+pointing at a repo-root file this builder never renders as a page) -- give
+it a blob-view URL prefix so those still resolve instead of 404ing.
 
 TEMPLATE is called as (TEMPLATE site title body) and must return a
 complete SXML document; see `default-template' for a ready one.
@@ -255,7 +258,9 @@ generated non-Markdown assets."
                  (open-input-string (if strip-comments?
                                         (strip-html-comment-lines text)
                                         text)))
-               (let* ((body (render-tables (rewrite-md-links (commonmark->sxml port))))
+               (let* ((body (render-tables
+                             (rewrite-md-links (commonmark->sxml port)
+                                               #:external-prefix external-prefix)))
                       (title (page-title file-name body))
                       (dir (substring (dirname file-name) (string-length directory)))
                       (out (string-append prefix dir
