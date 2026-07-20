@@ -60,11 +60,12 @@ at load time rather than a literal top-level define)."
    ((procedure? value) (inferred-signature name value))
    (else (symbol->string name))))
 
-(define (binding-documentation value info)
+(define (binding-documentation module-name name value info documentation-fallback)
   (cond
    ((source-info-documentation info) (source-info-documentation info))
    ((and (procedure? value) (procedure-documentation value))
     => (lambda (doc) (if (string-null? doc) #f doc)))
+   (documentation-fallback (documentation-fallback module-name name value))
    (else #f)))
 
 (define (binding-source-link info repo-blob-prefix)
@@ -87,6 +88,7 @@ at load time rather than a literal top-level define)."
                                  (title "API reference")
                                  (extra-columns '())
                                  (missing-docstring-text "No docstring is attached.")
+                                 (documentation-fallback #f)
                                  (on-form #f))
   "Return a Markdown string documenting every export of MODULES (a list of
 module-name lists, e.g. '((my-project widgets))), one table per module.
@@ -104,6 +106,13 @@ form its \"Source\" column link (e.g.
 \"https://github.com/org/repo/blob/main/\"); omit it to leave that column
 out entirely.
 
+DOCUMENTATION-FALLBACK, if given, is called as (proc module-name name
+value) -- after a real docstring and after INFO's scanned documentation,
+both come up empty -- for a last-resort description source with no
+docstring convention of its own to plug into `register-documentation!'
+directly: e.g. a command catalog's separately-authored summary text keyed
+by binding name rather than found next to its definition.
+
 EXTRA-COLUMNS is a list of (header . proc) pairs appended after the
 built-in ones; each PROC is called as (proc module-name name value info)
 -- INFO an <source-info> from (autodoc scan), possibly all-#f fields -- and
@@ -117,7 +126,8 @@ stability tier, a changelog version, an owning team."
        "| `" (symbol->string name) "` "
        "| " (binding-kind value) " "
        "| `" (binding-signature name value info) "` "
-       "| " (markdown-cell (or (binding-documentation value info) missing-docstring-text)) " "
+       "| " (markdown-cell (or (binding-documentation module-name name value info documentation-fallback)
+                              missing-docstring-text)) " "
        (apply string-append
         (map (lambda (column)
                (string-append "| " (markdown-cell ((cdr column) module-name name value info)) " "))
